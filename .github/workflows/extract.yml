@@ -1,8 +1,8 @@
-name: FD2_Text_Test
+name: FD2_Text_Hunter
 on: [workflow_dispatch]
 
 jobs:
-  test_decode:
+  hunt_text:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -13,28 +13,45 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Decode Test
+      - name: Hunt for Big5 Strings
         run: |
           python -c "
           import os
+
+          def is_big5(b1, b2):
+              # Big5 编码范围检查
+              return 0xA1 <= b1 <= 0xF9 and (0x40 <= b2 <= 0x7E or 0xA1 <= b2 <= 0xFE)
+
           if os.path.exists('FDTXT.DAT'):
               with open('FDTXT.DAT', 'rb') as f:
                   data = f.read()
-              try:
-                  # 从 0x92 偏移量开始截取 2000 个字节进行测试
-                  # 强制使用 Big5 编码解码，并转为通用的 UTF-8
-                  text = data[0x92:2000].decode('big5', errors='ignore')
-                  with open('test_result.txt', 'w', encoding='utf-8') as f:
-                      f.write(text)
-                  print('Success: Test file generated.')
-              except Exception as e:
-                  print(f'Error: {e}')
+              
+              results = []
+              i = 0
+              while i < len(data) - 1:
+                  # 如果发现符合 Big5 编码特征的两个字节
+                  if is_big5(data[i], data[i+1]):
+                      try:
+                          # 尝试解码这一段
+                          chunk = data[i:i+500].split(b'\x00')[0] # 读到结束符为止
+                          text = chunk.decode('big5')
+                          if len(text) > 1: # 过滤掉单字
+                              results.append(text)
+                          i += len(chunk)
+                      except:
+                          i += 1
+                  else:
+                      i += 1
+              
+              with open('found_text.txt', 'w', encoding='utf-8') as f:
+                  f.write('\n'.join(results))
+              print('成功：找到并提取了所有汉字片段！')
           else:
-              print('Error: FDTXT.DAT not found.')
+              print('错误：找不到文件')
           "
 
-      - name: Upload Test Result
+      - name: Upload Result
         uses: actions/upload-artifact@v4
         with:
-          name: Test_Plot_Result
-          path: test_result.txt
+          name: Extracted_Game_Text
+          path: found_text.txt
