@@ -1,58 +1,40 @@
-name: FD2_Resource_Extractor
+name: FD2_Text_Test
 on: [workflow_dispatch]
 
 jobs:
-  extract:
+  test_decode:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-      
-      - name: Install dependencies
-        run: pip install Pillow
 
-      - name: Real Extraction
+      - name: Decode Test
         run: |
           python -c "
           import os
-          from PIL import Image
-
-          # 1. 深度解析全剧情文本 (FDTXT.DAT)
           if os.path.exists('FDTXT.DAT'):
               with open('FDTXT.DAT', 'rb') as f:
                   data = f.read()
-                  try:
-                      # 找到第一个汉字特征位并尝试 Big5 解码
-                      text_data = data[0x100:].decode('big5', errors='ignore')
-                      # 简单清洗非打印字符
-                      clean_text = ''.join([c if ord(c) > 31 or c == '\n' else ' ' for c in text_data])
-                      with open('炎龙2_全剧情精校版.txt', 'w', encoding='utf-8') as out:
-                          out.write('【炎龙骑士团2：黄金城之谜】全剧情文本\n\n' + clean_text)
-                  except Exception as e:
-                      with open('error_log.txt', 'w') as err: err.write(str(e))
-
-          # 2. 批量提取高清头像 (FDSHAP.DAT)
-          if os.path.exists('FDSHAP.DAT'):
-              os.makedirs('Portraits', exist_ok=True)
-              with open('FDSHAP.DAT', 'rb') as f:
-                  # 炎龙2 头像通常为 64x64, 4bpp (16色), 约 2048 字节一帧
-                  for i in range(30):
-                      f.seek(i * 2048)
-                      raw_data = f.read(2048)
-                      if len(raw_data) < 2048: break
-                      # 临时转换为 64x64 灰度预览（解决调色板问题后会变彩色）
-                      img = Image.frombytes('L', (32, 64), raw_data).resize((64, 64))
-                      img.save(f'Portraits/Hero_{i:02d}.png')
+              try:
+                  # 从 0x92 偏移量开始截取 2000 个字节进行测试
+                  # 强制使用 Big5 编码解码，并转为通用的 UTF-8
+                  text = data[0x92:2000].decode('big5', errors='ignore')
+                  with open('test_result.txt', 'w', encoding='utf-8') as f:
+                      f.write(text)
+                  print('Success: Test file generated.')
+              except Exception as e:
+                  print(f'Error: {e}')
+          else:
+              print('Error: FDTXT.DAT not found.')
           "
-      - name: Upload Results
+
+      - name: Upload Test Result
         uses: actions/upload-artifact@v4
         with:
-          name: FD2_Final_Assets_Pack
-          path: |
-            炎龙2_全剧情精校版.txt
-            Portraits/
+          name: Test_Plot_Result
+          path: test_result.txt
