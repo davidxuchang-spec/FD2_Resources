@@ -1,57 +1,60 @@
-name: FD2_Text_Hunter
+name: FD2_Data_Detective
 on: [workflow_dispatch]
 
 jobs:
-  hunt_text:
+  detect:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-
-      - name: Hunt for Big5 Strings
+      - name: Data Analysis
         run: |
           python -c "
           import os
 
-          def is_big5(b1, b2):
-              # Big5 编码范围检查
-              return 0xA1 <= b1 <= 0xF9 and (0x40 <= b2 <= 0x7E or 0xA1 <= b2 <= 0xFE)
+          file_path = 'FDTXT.DAT'
+          if not os.path.exists(file_path):
+              print('Error: File not found')
+              exit()
 
-          if os.path.exists('FDTXT.DAT'):
-              with open('FDTXT.DAT', 'rb') as f:
-                  data = f.read()
-              
-              results = []
-              i = 0
-              while i < len(data) - 1:
-                  # 如果发现符合 Big5 编码特征的两个字节
-                  if is_big5(data[i], data[i+1]):
-                      try:
-                          # 尝试解码这一段
-                          chunk = data[i:i+500].split(b'\x00')[0] # 读到结束符为止
-                          text = chunk.decode('big5')
-                          if len(text) > 1: # 过滤掉单字
-                              results.append(text)
-                          i += len(chunk)
-                      except:
-                          i += 1
+          with open(file_path, 'rb') as f:
+              raw_data = f.read()
+
+          # 1. 提取前 500 字节的十六进制，用于分析文件头
+          hex_head = raw_data[:500].hex(' ')
+          with open('file_signature.txt', 'w') as f:
+              f.write('--- FILE HEX HEAD ---\n')
+              f.write(hex_head)
+
+          # 2. 尝试在地毯式搜索中识别 Big5 和 GBK
+          encodings = ['big5', 'gbk', 'utf-16']
+          found_segments = []
+
+          for enc in encodings:
+              found_segments.append(f'\n--- TESTING ENCODING: {enc} ---\n')
+              # 每隔 1 字节尝试解码，抓取长度超过 4 的连续字符串
+              current_str = b''
+              for b in raw_data:
+                  if b > 0x7F: # 可能是中文字符的一部分
+                      current_str += bytes([b])
                   else:
-                      i += 1
-              
-              with open('found_text.txt', 'w', encoding='utf-8') as f:
-                  f.write('\n'.join(results))
-              print('成功：找到并提取了所有汉字片段！')
-          else:
-              print('错误：找不到文件')
+                      if len(current_str) > 4:
+                          try:
+                              decoded = current_str.decode(enc)
+                              found_segments.append(decoded)
+                          except:
+                              pass
+                      current_str = b''
+          
+          with open('detect_results.txt', 'w', encoding='utf-8') as f:
+              f.write('\n'.join(found_segments))
           "
 
-      - name: Upload Result
+      - name: Upload Diagnostic Results
         uses: actions/upload-artifact@v4
         with:
-          name: Extracted_Game_Text
-          path: found_text.txt
+          name: Diagnostic_Report
+          path: |
+            file_signature.txt
+            detect_results.txt
